@@ -1,0 +1,434 @@
+{%  assign bundles = "" %}
+  {%- for line_item in cart.items -%}
+    {%  if line_item.properties['__bundle'] %}
+      {%  capture pricingHtml %}
+          {%- render 'price-list', line_item: line_item -%}
+      {%  endcapture %}
+      {%  if bundles == "" %}
+        {%  assign bundles = bundles 
+            | append: line_item.properties['__bundle'] 
+            | append: '`' 
+            | append: line_item.title
+            | append: 'xqtyx'
+            | append: line_item.quantity
+            | append: 'xqtyx'
+            | append:  line_item.final_line_price
+            | append: '#'
+            | append: line_item.properties['__bundle_title']
+        %}
+        {%  else  %}
+          {%  assign bundles = bundles 
+              | append: ',' 
+              | append: line_item.properties['__bundle'] 
+              | append: '`' 
+              | append: line_item.title
+              | append: 'xqtyx'
+              | append: line_item.quantity
+              | append: 'xqtyx'
+              | append:  line_item.final_line_price
+              | append: '#'
+              | append: line_item.properties['__bundle_title']
+          %}
+      {%  endif  %}
+    {%  endif  %}
+  {%  endfor  %}
+
+  {% assign bundleIDS = '' %}
+  {% assign bundles = bundles | split : ',' %}
+  {% for index in bundles  %}
+  	{% assign vals = index | split : '`' %}
+  	{% unless bundleIDS contains vals[0] %}
+  		{% if bundleIDS == '' %}
+  			{% assign bundleIDS = bundleIDS | append : vals[0] %}
+  			{% else %}
+  				{% assign bundleIDS = bundleIDS | append : ',' | append : vals[0] %}
+  		{% endif %}
+  	{% endunless %}
+  {% endfor %}
+
+
+{% assign bundleIDS = bundleIDS | split : ',' %}
+{% assign splitBundles = '' %}
+{% assign splitTitles = '' %}
+{% for bundleID in bundleIDS %}
+  {% assign newBundle = "" %}
+  {% for bundle in bundles %}
+      {% if bundle contains bundleID %}
+          {% assign innerValue =  bundle | split : '`' %}
+          {% assign innerValue = innerValue[1] %}
+          {% assign innerValue = innerValue | split : '#'  %}
+          {% if newBundle == "" %}
+            {%  assign splitTitles = splitTitles | append: innerValue[1] | append: ',' %}
+          {% endif %}
+          {% assign newBundle = newBundle  | append : innerValue[0] | append : ',' %}
+      {% endif %}
+  {% endfor %}
+  {% assign pos = newBundle | size | minus: 1 %}
+  {% assign last_char = newBundle | slice: pos, 1 %}
+  {% if last_char == "," %}
+    {% assign newBundle = newBundle | slice: 0, pos %}
+  {% endif %}
+  {% assign splitBundles = splitBundles | append : newBundle %}
+  {% unless forloop.last %}
+      {% assign splitBundles = splitBundles | append : '||'  %}
+  {% endunless %}
+{% endfor %}
+
+{% assign pos = splitTitles | size | minus: 1 %}
+{% assign last_char = splitTitles | slice: pos, 1 %}
+{% if last_char == "," %}
+  {% assign splitTitles = splitTitles | slice: 0, pos %}
+{% endif %}
+
+{% assign splitTitles = splitTitles | split : ',' %}
+{% assign innerBundles =  splitBundles | split : '||' %}
+
+{% comment %} Define bundleImages {% endcomment %}
+ <div class="v-stack gap-6 sm:gap-8">
+    <div class="cart-drawer__line-items">
+        {% for bundle in innerBundles %}
+            {% assign titlex = splitTitles[forloop.index0] %}
+            {% assign bID = bundleIDS[forloop.index0] %}
+            {% assign bunleItems = bundle | split : ',' %}
+            <line-item class="line-item">
+                <div class="line-item__media-wrapper">
+                <img src="{{ bundleImages }}" alt="" srcset="" width="1650" height="1650" loading="lazy" sizes="(max-width: 740px) 80px, 96px" class="line-item__media rounded-xs">
+                </div>
+                <div class="line-item__info">
+                <div class="v-stack gap-0.5">
+                    <a href="javascript:void(0)" class="bold">
+                    <span class="reversed-link hover:show">{{ titlex }} BUNDLE</span>
+                    </a>
+                </div>
+                <ul class="list-disc">
+                    {%  assign discountedPrice = 0.0 %}
+                    {% for item in bunleItems %}
+                        {%  assign itemx = item | split : 'xqtyx' %}
+                        {%  assign discountedPrice = discountedPrice | plus: itemx[2] %}
+                        <li>{{ itemx[0] }} - {{  itemx[1] }}</li>
+                    {%  endfor  %}
+                    {%  assign originalPrice = discountedPrice | times: 1.05 %}
+                    <price-list class="price-list  "><sale-price class="text-on-sale">
+                        <span class="sr-only">Sale price</span>{{  discountedPrice | money }}</sale-price><compare-at-price class="text-subdued line-through">
+                        <span class="sr-only">Regular price</span>{{  originalPrice | money }}</compare-at-price>
+                    </price-list>
+                    
+                </ul>
+                </div>
+                <div class="line-item__actions text-subdued hidden sm:block">
+                <line-item-quantity class="v-stack gap-2">
+                    <span class="text-xs text-center">
+                    <a data-bundle-id="{{bID}}" class="link bundle-remove">Remove</a>
+                    </span>
+                </line-item-quantity>
+                </div>
+            </line-item>
+        {%  endfor  %}
+        {%- for line_item in cart.items -%}
+            {%- render 'line-item', line_item: line_item, show_desktop_quantity: true -%}
+        {%- endfor -%}
+</div>
+
+
+<script>
+    function removeCartItem(updates) {
+        console.log(updates);
+        fetch('/cart/update.js', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                updates
+            })
+        })
+        .then(response => response.json())
+        .then(data => console.log('Item removed', data))
+        .catch((error) => {
+            console.error('Error:', error);
+        });
+    }
+
+    
+    document.body.addEventListener('click', function(e) {
+        if(e.target && e.target.classList.contains('bundle-remove')) {
+            var bundleId = parseInt(e.target.getAttribute('data-bundle-id'));
+            console.log(bundleId);
+            const newMap = {};
+            // Get current cart
+            fetch('/cart.js')
+            .then(response => response.json())
+            .then(data => {
+                data.items.forEach(item => {
+                    // Check for your specific property here, if it exists then remove the item
+                    if (item.properties['__bundle'] == bundleId) {
+                          newMap[item.variant_id] = 0;
+                    }
+                });
+                removeCartItem(newMap);
+            });
+        }
+    });
+    class BundlerHandler {
+        constructor() {
+            this.collection_products = {};
+            this.collections = {{ section.settings.collections | json }}
+            this.tabs = [];
+            {% for collection in section.settings.collections %}
+                {% assign current_collection = collection %}
+                {% assign min = current_collection.metafields.custom.bundle_minimum %}
+                {% if min == blank %}
+                    {% assign min = 4 %}
+                {% endif %}
+                this.collection_products['{{current_collection.handle}}'] = {{ current_collection.products | json }}
+                this.tabs.push({
+                    title: '{{current_collection.handle}}',
+                    type: '{{current_collection.title}}',
+                    minRequired: 6
+                })
+            {% endfor %}
+            
+            this.allProducts = this.collection_products;
+            this.productList = this.allProducts[this.tabs[0].title] ?? []
+            this.selected = {
+                title: this.tabs[0].title,
+                type: this.tabs[0].type,
+                minimum: 6 , 
+                bundleSize: this.tabs[0].minRequired
+            }
+            this.bundled = {}
+    
+            if (this.tabs) {
+                this.tabs.forEach(tab => {
+                    this.bundled[tab.title] = []
+                })
+            }
+            
+            this.sliderValue = 0;
+            this.sliderWrapper = document.getElementById('slider-wrapper');
+            this.slider = document.getElementById("slider");
+            this.bundleListEl = document.getElementById('bundled-products');
+            this.addToCartBtn = document.getElementById('add-to-cart-btn');
+
+            return this.init()
+        }
+
+        init(){
+            this.createBundleHandler()
+            this.handleSlider()
+
+            return this
+        }
+    
+        changeBundleSize(_, diff) {
+            this.selected.bundleSize = this.selected.minimum + diff;
+            this.createBundleHandler();
+        }
+    
+        removeFromBundle(event) {
+            const productId = JSON.parse(event.target.parentNode.dataset.id)
+            if (productId) {
+                this.bundled[this.selected.title] = this.bundled[this.selected.title].filter(prd => prd.id !== productId)
+                this.createBundleHandler()
+            }
+        }
+        handleATC(event , ff){
+            if(!ff){
+                return;
+            }
+            var shopifyItems = {
+                "items": []
+            };
+            const bundleID = Math.floor(100000000 + Math.random() * 900000000); 
+            this.bundled[this.selected.title].map((productData) => {
+                shopifyItems.items.push({
+                    "id": productData.variants.length == 1 ?  productData.variants[0].id : productData.id,
+                    "quantity": productData.quantity,
+                    "properties": {
+                      "__bundle":bundleID,
+                      "__bundle_title": this.selected.type
+                    }
+                });
+            });
+            fetch('/cart/add.js', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(shopifyItems)
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            })
+            .then(data =>  (document.dispatchEvent(new Event("cart:refresh")) , document.dispatchEvent(new Event("variant:add")) )  )
+            .catch(error => console.error('Error adding product to cart:', error));
+        }
+            
+        createBundleHandler() {
+            const productCount = this.bundled[this.selected.title].reduce((acc, prod) => acc + prod.quantity, 0)
+        
+            const totalPrice = this.bundled[this.selected.title].reduce((acc, prod) => acc + prod.price * prod.quantity, 0)
+            
+            const nodButtons = `
+                <div class="bundle-size">
+                    <h3 class="bundle-size__title">Select <b>BIGGER</b> bundle-sizes to get <b>BETTER</b> offers</h3>
+                    <button 
+                        class="bundle-size__btn ${this.selected.bundleSize === this.selected.minimum ? 'is--active' : ''}"
+                        onclick="bundlerHandler.changeBundleSize(event, 0)">
+                        ${this.selected.minimum} ${this.selected.type}
+                    </button>
+                    <button 
+                        class="bundle-size__btn ${this.selected.bundleSize === this.selected.minimum + 1 ? 'is--active' : ''}" 
+                        onclick="bundlerHandler.changeBundleSize(event, 1)">
+                        ${this.selected.minimum + 1} ${this.selected.type}
+                    </button>
+                    <button 
+                        class="bundle-size__btn ${this.selected.bundleSize === this.selected.minimum + 2 ? 'is--active' : ''}"
+                        onclick="bundlerHandler.changeBundleSize(event, 2)">
+                        ${this.selected.minimum + 2} ${this.selected.type}
+                    </button>
+                </div>
+            `
+        
+            const bundleList = this.bundled[this.selected.title]
+        
+            let nodBundled = `<ul>`
+            bundleList.forEach(prod => {
+                const bundleItem = `
+                    <li class="bundle-product">
+                        <img src=${prod.images[0]} class="bundle-product__img"/>
+                        <div class="bundle-product__info" data-id=${prod.id}>
+                            <h2 class="bundle-product__title">${prod.title}${prod.selectedVariant ? ` - ${prod.selectedVariant}` : ''}</h2>
+                            <h4 class="bundle-product__price"><b>QTY: ${prod.quantity} <br /><span class="mOnlyPD"></span> $${prod.price*prod.quantity/100}</b></h4>
+                            <button class="bundle-product__add-btn remove" onclick="bundlerHandler.removeFromBundle(event)">
+                                X
+                            </button>
+                        </div>
+                    </li>
+                `
+                nodBundled += bundleItem
+            })
+            nodBundled += `</ul>`
+        
+            const nodFooter = `<div class="bundle-footer">
+                <h2 class="bundle-footer__total">total: $${totalPrice/100}</h2>
+            </div>`
+        
+            const bundleFooter = `<div class="bundler-footer__acb"><button class="product-bundler__add-to-cart button button--xl button--secondary ${productCount >= this.selected.bundleSize ? '' : 'is--disabled'}" id="add-to-cart" onclick="bundlerHandler.handleATC(event , ${productCount >= this.selected.bundleSize ? true : false})">
+                ${productCount >= this.selected.bundleSize ? 'Add To Cart' : `Add ${this.selected.bundleSize - productCount} more ${this.selected.type} to bundle`}
+            </button>
+        </div>`
+
+            if(productCount > 0){
+                this.bundleListEl.innerHTML = nodBundled + nodFooter
+                this.sliderValue = (productCount/this.selected.bundleSize)*100;
+            }else{
+                this.sliderValue = 0;
+                this.bundleListEl.innerHTML = `<div class="empty-bundle-warning">Your bundle is <strong>empty</strong>!<br/>Add some <strong>${this.selected.type}</strong> to that</div>`
+            }
+            
+            this.handleSlider()
+            this.addToCartBtn.innerHTML = bundleFooter
+        }
+    
+        addToBundle(e) {
+            const productId = e?.target?.parentNode ? JSON.parse(e.target.parentNode.dataset.id) : null;
+            
+            if (productId) {
+                let variant = {
+                    id: null,
+                    title: null,
+                    variantIdx: -1
+                }
+
+                const variantSelector = document.querySelector(`#variant-${productId}`)?.value ?? ''
+
+                if(variantSelector){
+                    [variant.id, variant.title] = variantSelector.split(',')
+                }
+
+                const product = this.productList.find(prod => prod.id === productId);
+                const productIndex = this.bundled[this.selected.title].findIndex(prod => prod.id === productId);
+
+                if(variant.id){
+                    variant.variantIdx = this.bundled[this.selected.title].findIndex(prod => prod.id === Number(variant.id));
+                }
+        
+                if (productIndex !== -1 || variant.variantIdx !== -1) {
+                    const tempIdx = productIndex == -1 ?  Number(variant.variantIdx) : productIndex
+                    this.bundled[this.selected.title][tempIdx].quantity += 1;
+                } else {
+                    const temp = {...product}
+                    if(variantSelector) {
+                        temp.selectedVariant = variant.title
+                        temp.id = Number(variant.id)
+                    }
+
+                    this.bundled[this.selected.title].push({
+                        ...temp,
+                        quantity: 1
+                    });
+                }
+        
+                this.createBundleHandler();
+            }
+        }
+    
+        tabToggle(_, selectedType) {
+            if (selectedType && selectedType === this.selected.title) {
+                return
+            }
+
+            const temp = this.tabs.find(tab => tab.title === selectedType)
+            this.selected = {
+                title: temp.title,
+                type: temp.type,
+                minimum: temp.minRequired,
+                bundleSize: temp.minRequired
+            }
+    
+            this.productList = this.allProducts[this.selected.title] || []
+    
+            this.tabs.forEach(tab => {
+                if(tab.title === this.selected.title) {
+                    document.getElementById(tab.title).classList.add('is--active')
+                    document.querySelector(`[data-type='${tab.title}']`).style.display = 'flex'
+                } else {
+                    document.getElementById(tab.title).classList.remove('is--active')
+                    document.querySelector(`[data-type='${tab.title}']`).style.display = 'none'
+                }
+                   
+            })
+            
+            this.createBundleHandler()
+        }
+
+        handleSlider(){
+            let sliderVal = this.sliderValue;
+            if(sliderVal > 100){
+                sliderVal = 100;
+            }
+
+            slider.style.width = `${sliderVal}%`;
+
+            ['slide-25', 'slide-50', 'slide-75', 'slide-100'].forEach((className) => {
+                this.sliderWrapper.classList.remove(className)
+            })
+
+            if (sliderVal > 0 && sliderVal < 50) {
+                this.sliderWrapper.classList.add('slide-25')
+            } else if (sliderVal >= 50 && sliderVal < 75) {
+                this.sliderWrapper.classList.add('slide-50')
+            } else if (sliderVal >= 75 && sliderVal < 100) {
+                this.sliderWrapper.classList.add('slide-75')
+            } else if(sliderVal === 100){
+                this.sliderWrapper.classList.add('slide-100')
+            }
+        }
+    }
+    
+    const bundlerHandler = new BundlerHandler();
+</script>
